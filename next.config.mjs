@@ -17,9 +17,16 @@ const nextConfig = {
         port: "",
         pathname: "/**",
       },
+      {
+        protocol: "https",
+        hostname: "assets.transformik.com",
+        port: "",
+        pathname: "/**",
+      },
     ],
     formats: ["image/avif", "image/webp"],
     minimumCacheTTL: 60 * 60 * 24 * 7, // Cache for 7 days
+    qualities: [75, 80, 85, 90, 100], // Support quality values used in the app
   },
 
   // Enable compression

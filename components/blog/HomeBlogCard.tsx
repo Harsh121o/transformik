@@ -17,17 +17,23 @@ interface HomeBlogCardProps {
 }
 
 export function HomeBlogCard({ blog }: HomeBlogCardProps) {
+  // Check if image is from CDN (already optimized)
+  const imageUrl = blog.featured_image || blog.image || "";
+  const isFromCDN = imageUrl.includes("assets.transformik.com");
+
   return (
     <Card className="rounded-xl border border-gray-200 p-4 w-full flex flex-col md:flex-row gap-4">
       {/* Blog Thumbnail */}
       <div className="w-full md:w-1/3 min-w-[120px] flex-shrink-0 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center aspect-[5/3] relative">
         {blog.featured_image || blog.image ? (
           <Image
-            src={blog.featured_image || blog.image || ""}
+            src={imageUrl}
             alt={blog.title}
             fill
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 33vw, 300px"
             className="object-cover"
-            unoptimized
+            loading="lazy"
+            {...(isFromCDN ? { unoptimized: true } : { quality: 80 })}
           />
         ) : (
           <span className="text-gray-400 text-sm font-medium text-center">

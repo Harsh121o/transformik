@@ -15,6 +15,10 @@ interface CompactBlogCardProps {
 }
 
 export function CompactBlogCard({ blog }: CompactBlogCardProps) {
+  // Check if image is from CDN (already optimized)
+  const imageUrl = blog.featured_image || blog.image || "";
+  const isFromCDN = imageUrl.includes("assets.transformik.com");
+
   return (
     <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
       <div className="flex gap-3">
@@ -22,12 +26,14 @@ export function CompactBlogCard({ blog }: CompactBlogCardProps) {
         <div className="w-20 h-16 flex-shrink-0 rounded-md overflow-hidden bg-gray-100 flex items-center justify-center">
           {blog.featured_image || blog.image ? (
             <Image
-              src={blog.featured_image || blog.image || ""}
+              src={imageUrl}
               alt={blog.title}
               width={80}
               height={64}
+              sizes="80px"
               className="object-cover w-full h-full"
-              unoptimized
+              loading="lazy"
+              {...(isFromCDN ? { unoptimized: true } : { quality: 75 })}
             />
           ) : (
             <span className="text-gray-400 text-xs font-medium text-center">

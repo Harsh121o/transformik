@@ -9,8 +9,48 @@ import { BlogContent } from "@/components/blog/BlogContent";
 import Image from "next/image";
 import type { Metadata } from "next";
 
+// ⚡ ISR: Revalidate every 12 hours
+export const revalidate = 43200;
+
+// Enable on-demand generation
+export const dynamicParams = true;
+
 interface BlogDetailPageProps {
   params: Promise<{ slug: string }>;
+}
+
+// ⚡ Generate static paths for blogs at build time
+export async function generateStaticParams() {
+  try {
+    console.log("Generating static params for blog posts...");
+
+    // Fetch all blog slugs (blogs are typically fewer than tools)
+    const { data, error } = await supabase
+      .from("blogs_summary")
+      .select("slug")
+      .not("slug", "is", null)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching blog slugs:", error);
+      return [];
+    }
+
+    const validBlogs = (data || []).filter(
+      (blog) => blog.slug && blog.slug.trim(),
+    );
+
+    console.log(
+      `✓ Generated static params for ${validBlogs.length} blog posts`,
+    );
+
+    return validBlogs.map((blog) => ({
+      slug: blog.slug,
+    }));
+  } catch (err) {
+    console.error("Error generating static params for blogs:", err);
+    return [];
+  }
 }
 
 // Dynamic metadata
@@ -21,7 +61,7 @@ export async function generateMetadata({
 
   const { data: blogSummary } = await supabase
     .from("blogs_summary")
-    .select("title, excerpt, featured_image")
+    .select("*")
     .eq("slug", slug)
     .single();
 
@@ -68,7 +108,7 @@ export async function generateMetadata({
 export default async function BlogDetailPage({ params }: BlogDetailPageProps) {
   const { slug } = await params;
 
-  // Fetch blog summary
+  // Fetch blog summary (using * to support fallback fields like image, cover_image, description, summary)
   const { data: summary, error: summaryError } = await supabase
     .from("blogs_summary")
     .select("*")
@@ -191,7 +231,10 @@ export default async function BlogDetailPage({ params }: BlogDetailPageProps) {
                     height={480}
                     sizes="(max-width: 768px) 100vw, 360px"
                     className="object-cover w-full h-full"
-                    unoptimized
+                    priority
+                    {...(heroImage.includes("assets.transformik.com")
+                      ? { unoptimized: true }
+                      : { quality: 90 })}
                   />
                 </div>
               ) : (

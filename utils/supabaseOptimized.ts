@@ -91,7 +91,7 @@ export class SupabaseCache {
       const { data, error } = await supabaseServer
         .from("tools_summary")
         .select(
-          "id, tool_name, slug, one_line_description, pricing_model, url, logo, category"
+          "id, tool_name, slug, one_line_description, pricing_model, url, logo, category",
         )
         .order("created_at", { ascending: false })
         .limit(limit);
@@ -192,7 +192,7 @@ export class SupabaseCache {
           category
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-")
-            .replace(/(^-|-$)+/g, "")
+            .replace(/(^-|-$)+/g, ""),
         );
 
       // Fetch blogs
@@ -235,7 +235,7 @@ export class SupabaseCache {
       console.log(
         `✓ Cached sitemap data: ${uniqueCategories.length} categories, ${
           blogs?.length || 0
-        } blogs, ${allTools.length} tools`
+        } blogs, ${allTools.length} tools`,
       );
 
       return sitemapData;
@@ -297,7 +297,7 @@ export class SupabaseCache {
         : [];
 
       console.log(
-        `✓ Fetched ${uniqueTools.length} tools (page ${page}, total: ${count})`
+        `✓ Fetched ${uniqueTools.length} tools (page ${page}, total: ${count})`,
       );
 
       return {
@@ -346,7 +346,7 @@ export class SupabaseCache {
       console.log(
         `✓ Fetched ${
           data?.length || 0
-        } tools for category "${categoryName}" (page ${page}, total: ${count})`
+        } tools for category "${categoryName}" (page ${page}, total: ${count})`,
       );
 
       return {
@@ -453,7 +453,7 @@ export class SupabaseCache {
         .from("tools_summary")
         .select(
           "id,tool_name,slug,one_line_description,pricing_model,url,logo,category",
-          { count: "exact" }
+          { count: "exact" },
         )
         .eq("pricing_model", "Free");
 
@@ -487,7 +487,7 @@ export class SupabaseCache {
         : [];
 
       console.log(
-        `✓ Fetched ${uniqueTools.length} free tools (page ${page}, total: ${count})`
+        `✓ Fetched ${uniqueTools.length} free tools (page ${page}, total: ${count})`,
       );
 
       return {
@@ -555,6 +555,60 @@ export class SupabaseCache {
     }
   }
 
+  // ⚡ Get top categories with caching (optimized for sidebar)
+  static async getTopCategories(limit = 6): Promise<string[]> {
+    const cacheKey = `top_categories_${limit}`;
+    const cached = cache.get(cacheKey);
+
+    if (cached) {
+      console.log("✓ Top categories served from cache");
+      return cached as string[];
+    }
+
+    try {
+      // Fetch only category field from first 1000 tools (much faster!)
+      const { data, error } = await supabaseServer
+        .from("tools_summary")
+        .select("category")
+        .not("category", "is", null)
+        .limit(1000);
+
+      if (error) throw error;
+
+      // Extract and count categories
+      const categoryCount: { [key: string]: number } = {};
+
+      data?.forEach((item) => {
+        if (item.category) {
+          const categories = Array.isArray(item.category)
+            ? item.category
+            : [item.category];
+
+          categories.forEach((cat: string) => {
+            if (cat && cat.trim()) {
+              categoryCount[cat] = (categoryCount[cat] || 0) + 1;
+            }
+          });
+        }
+      });
+
+      // Sort by popularity and take top N
+      const topCategories = Object.entries(categoryCount)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, limit)
+        .map(([category]) => category);
+
+      // Cache for 6 hours
+      cache.set(cacheKey, topCategories, 360);
+      console.log(`✓ Cached ${topCategories.length} top categories`);
+
+      return topCategories;
+    } catch (error) {
+      console.error("Error fetching top categories:", error);
+      return [];
+    }
+  }
+
   // Get filtered blogs with pagination (NEW - for performance)
   static async getFilteredBlogs({
     page = 1,
@@ -589,7 +643,7 @@ export class SupabaseCache {
       if (error) throw error;
 
       console.log(
-        `✓ Fetched ${data?.length || 0} blogs (page ${page}, total: ${count})`
+        `✓ Fetched ${data?.length || 0} blogs (page ${page}, total: ${count})`,
       );
 
       return {

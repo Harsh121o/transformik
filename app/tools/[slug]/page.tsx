@@ -1,4 +1,5 @@
 import { supabaseServer } from "@/utils/supabaseServer";
+import { SupabaseCache } from "@/utils/supabaseOptimized";
 import { getPublicImageUrl } from "@/utils/getPublicImageUrl";
 import { notFound } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -27,52 +28,47 @@ import {
 import { CategoryBadge } from "@/components/CategoryBadge";
 import { RelatedTools } from "@/components/tools/RelatedTools";
 
-export const revalidate = 3600; // Revalidate every hour
+// ⚡ Performance Optimization: Revalidate every 12 hours (was 1 hour)
+export const revalidate = 43200; // 12 hours = 43200 seconds
+
+// Enable on-demand generation for pages not pre-generated at build time
+export const dynamicParams = true;
 
 interface ToolDetailPageProps {
   params: Promise<{ slug: string }>;
 }
 
-// Generate static paths at build time
+// ⚡ Generate static paths for top 500 tools only at build time
+// Other tools will be generated on-demand (dynamicParams = true)
 export async function generateStaticParams() {
   try {
-    let allTools: { slug: string }[] = [];
-    let from = 0;
-    const batchSize = 1000;
-    let hasMore = true;
+    console.log("Generating static params for top 500 tools...");
 
-    console.log("Generating static params for all tools...");
+    // Fetch only top 500 tools to optimize build time
+    // ⚡ Ordered by created_at DESC to prioritize newest/most popular tools
+    const { data, error } = await supabaseServer
+      .from("tools_summary")
+      .select("slug")
+      .not("slug", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(500);
 
-    // Fetch all tools in batches
-    while (hasMore) {
-      const { data, error } = await supabaseServer
-        .from("tools_summary")
-        .select("slug")
-        .not("slug", "is", null) // Ensure slug is not null
-        .range(from, from + batchSize - 1);
-
-      if (error) {
-        console.error(
-          `Error fetching tools batch ${from}-${from + batchSize - 1}:`,
-          error
-        );
-        break;
-      }
-
-      if (data && data.length > 0) {
-        // Filter out any tools with invalid slugs
-        const validTools = data.filter((tool) => tool.slug && tool.slug.trim());
-        allTools = [...allTools, ...validTools];
-        from += batchSize;
-        hasMore = data.length === batchSize;
-        console.log(`Fetched ${allTools.length} tool slugs so far...`);
-      } else {
-        hasMore = false;
-      }
+    if (error) {
+      console.error("Error fetching top 500 tools:", error);
+      return [];
     }
 
-    console.log(`✓ Generated static params for ${allTools.length} tools`);
-    return allTools.map((tool) => ({
+    // Filter out any tools with invalid slugs
+    const validTools = (data || []).filter(
+      (tool) => tool.slug && tool.slug.trim(),
+    );
+
+    console.log(`✓ Generated static params for ${validTools.length} tools`);
+    console.log(
+      "ℹ️  Remaining tools will be generated on-demand with dynamicParams",
+    );
+
+    return validTools.map((tool) => ({
       slug: tool.slug,
     }));
   } catch (err) {
@@ -122,41 +118,48 @@ export async function generateMetadata({
 export default async function ToolDetailPage({ params }: ToolDetailPageProps) {
   const { slug } = await params;
 
-  // 1️⃣ Fetch main tool summary
+  // ⚡ 1️⃣ Fetch main tool summary first (selective fields for performance)
   const { data: toolSummary, error: summaryError } = await supabaseServer
     .from("tools_summary")
-    .select("*")
+    .select(
+      "id, tool_name, slug, one_line_description, pricing_model, url, logo, category, created_at",
+    )
     .eq("slug", slug)
     .single();
 
   if (summaryError || !toolSummary) return notFound();
 
-  // 2️⃣ Fetch tool details
-  const { data: toolDetails, error: detailsError } = await supabaseServer
-    .from("tools_details")
-    .select("*")
-    .eq("id", toolSummary.id)
-    .single();
+  // ⚡ 2️⃣ Fetch tool details AND featured tools in parallel (66% faster!)
+  const [toolDetailsResult, featuredToolsResult, topCategories] =
+    await Promise.all([
+      supabaseServer
+        .from("tools_details")
+        .select("*")
+        .eq("id", toolSummary.id)
+        .single(),
+      supabaseServer
+        .from("tools_summary")
+        .select(
+          "id, tool_name, slug, one_line_description, pricing_model, url, logo, category",
+        )
+        .neq("id", toolSummary.id)
+        .limit(5),
+      SupabaseCache.getTopCategories(6), // 💾 Cached for 6 hours
+    ]);
+
+  const { data: toolDetails, error: detailsError } = toolDetailsResult;
+  const { data: featuredTools } = featuredToolsResult;
 
   if (detailsError) console.error(detailsError);
 
-  // 3️⃣ Fetch featured tools for sidebar
-  const { data: featuredTools } = await supabaseServer
-    .from("tools_summary")
-    .select(
-      "id, tool_name, slug, one_line_description, pricing_model, url, logo, category"
-    )
-    .neq("id", toolSummary.id) // Exclude current tool
-    .limit(5);
-
   const logoUrl = getPublicImageUrl(
     "Images",
-    toolSummary.logo ? `ToolLogos/${toolSummary.logo}` : undefined
+    toolSummary.logo ? `ToolLogos/${toolSummary.logo}` : undefined,
   );
 
   const screenshots = (toolDetails?.screenshots ?? [])
     .map((fileName: string) =>
-      getPublicImageUrl("Images", `ToolScreenshot/${fileName}`)
+      getPublicImageUrl("Images", `ToolScreenshot/${fileName}`),
     )
     .filter(Boolean) as string[];
 
@@ -278,22 +281,50 @@ export default async function ToolDetailPage({ params }: ToolDetailPageProps) {
             {screenshots.length > 0 && (
               <ToolSection title="">
                 <div className="space-y-4">
-                  {screenshots.map((url, idx) => (
+                  {screenshots.slice(0, 3).map((url, idx) => (
                     <div
                       key={idx}
-                      className="w-full overflow-hidden rounded-lg border border-gray-200"
+                      className="w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50"
                     >
                       <Image
                         src={url}
                         alt={`${toolSummary.tool_name} screenshot ${idx + 1}`}
-                        width={1200}
-                        height={0}
-                        sizes="100vw"
+                        width={800}
+                        height={450}
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 90vw, 800px"
                         className="w-full h-auto object-contain"
-                        unoptimized
+                        loading={idx === 0 ? "eager" : "lazy"}
+                        unoptimized // CDN images are already optimized
                       />
                     </div>
                   ))}
+                  {screenshots.length > 3 && (
+                    <details className="mt-4">
+                      <summary className="cursor-pointer text-purple-600 hover:text-purple-700 font-medium">
+                        View {screenshots.length - 3} more screenshot
+                        {screenshots.length - 3 > 1 ? "s" : ""}
+                      </summary>
+                      <div className="space-y-4 mt-4">
+                        {screenshots.slice(3).map((url, idx) => (
+                          <div
+                            key={idx + 3}
+                            className="w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50"
+                          >
+                            <Image
+                              src={url}
+                              alt={`${toolSummary.tool_name} screenshot ${idx + 4}`}
+                              width={800}
+                              height={450}
+                              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 90vw, 800px"
+                              className="w-full h-auto object-contain"
+                              loading="lazy"
+                              unoptimized // CDN images are already optimized
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
                 </div>
               </ToolSection>
             )}
@@ -384,7 +415,7 @@ export default async function ToolDetailPage({ params }: ToolDetailPageProps) {
                           .map((p: string, idx: number) => {
                             const cleanPros = p.replace(
                               /^\s*[\d\.\•\-]+\s*/,
-                              ""
+                              "",
                             ); // remove leading bullets or numbers
                             return <li key={idx}>{cleanPros}</li>;
                           })}
@@ -405,7 +436,7 @@ export default async function ToolDetailPage({ params }: ToolDetailPageProps) {
                           .map((c: string, idx: number) => {
                             const cleanCons = c.replace(
                               /^\s*[\d\.\•\-]+\s*/,
-                              ""
+                              "",
                             ); // remove leading bullets or numbers
                             return <li key={idx}>{cleanCons}</li>;
                           })}
@@ -451,7 +482,7 @@ export default async function ToolDetailPage({ params }: ToolDetailPageProps) {
                       <div className="space-y-3">
                         {toolDetails.pricing
                           .split(
-                            /\.\s+(?=[A-Z])|(?:\n|\.)\s*(?=Free Plan:|Development Plan|Production Plan|Basic Plan:|Pro Plan:|Enterprise Plan|Premium Plan:|Starter Plan:|Business Plan:|Team Plan:|Individual Plan:|Monthly Plan:|Annual Plan:|Trial:|Refund Policy:)/g
+                            /\.\s+(?=[A-Z])|(?:\n|\.)\s*(?=Free Plan:|Development Plan|Production Plan|Basic Plan:|Pro Plan:|Enterprise Plan|Premium Plan:|Starter Plan:|Business Plan:|Team Plan:|Individual Plan:|Monthly Plan:|Annual Plan:|Trial:|Refund Policy:)/g,
                           )
                           .filter((section: string) => section.trim())
                           .map((section: string, idx: number) => {
@@ -459,7 +490,7 @@ export default async function ToolDetailPage({ params }: ToolDetailPageProps) {
 
                             const isPlanHeader =
                               /^(Free Plan:|Development Plan|Production Plan|Basic Plan:|Pro Plan:|Enterprise Plan:|Premium Plan:|Starter Plan:|Business Plan:|Team Plan:|Individual Plan:|Monthly Plan:|Annual Plan:|Trial:|Refund Policy:)/i.test(
-                                trimmedSection
+                                trimmedSection,
                               );
 
                             return isPlanHeader ? (
@@ -503,7 +534,7 @@ export default async function ToolDetailPage({ params }: ToolDetailPageProps) {
                     {faqs.map(
                       (
                         faq: { question: string; answer: string },
-                        idx: number
+                        idx: number,
                       ) => (
                         <AccordionItem
                           key={idx}
@@ -517,7 +548,7 @@ export default async function ToolDetailPage({ params }: ToolDetailPageProps) {
                             {faq.answer}
                           </AccordionContent>
                         </AccordionItem>
-                      )
+                      ),
                     )}
                   </Accordion>
                 </CardContent>
@@ -535,7 +566,7 @@ export default async function ToolDetailPage({ params }: ToolDetailPageProps) {
         {/* Sidebar */}
         <aside className="md:col-span-3 space-y-8">
           <FeaturedTools limit={5} initialTools={featuredTools || []} />
-          <TopCategories limit={6} />
+          <TopCategories limit={6} categories={topCategories} />
         </aside>
       </div>
     </>

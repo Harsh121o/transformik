@@ -1,47 +1,14 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { supabase } from "@/utils/supabase";
 import Link from "next/link";
 
 interface TopCategoriesProps {
   limit?: number;
+  categories?: string[]; // ⚡ Accept server-side categories
 }
 
-export function TopCategories({ limit = 6 }: TopCategoriesProps) {
-  const [categories, setCategories] = useState<string[]>([]);
-
-  useEffect(() => {
-    const fetchCategories = async () => {
-      const { data, error } = await supabase
-        .from("tools_summary")
-        .select("category");
-
-      if (!error && data) {
-        const allCategories: string[] = [];
-
-        data.forEach((tool) => {
-          const categories = tool.category;
-
-          if (Array.isArray(categories)) {
-            categories.forEach((cat) => {
-              if (cat && typeof cat === "string") {
-                allCategories.push(cat);
-              }
-            });
-          } else if (typeof categories === "string" && categories) {
-            allCategories.push(categories);
-          }
-        });
-
-        const unique = Array.from(new Set(allCategories));
-        setCategories(unique);
-      }
-    };
-
-    fetchCategories();
-  }, []);
-
+export function TopCategories({
+  limit = 6,
+  categories = [],
+}: TopCategoriesProps) {
   // Convert category names into URL-friendly slugs
   const generateSlug = (category: string) =>
     category
