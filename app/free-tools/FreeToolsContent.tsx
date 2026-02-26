@@ -207,48 +207,47 @@ export function FreeToolsContent({
         </div>
 
         {/* Tools Grid */}
-        {isMounted && displayTools.length === 0 ? (
+        {displayTools.length === 0 ? (
           <p className="text-gray-500">No free tools found.</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {isMounted &&
-              displayTools.map((tool, index) => {
-                const logoUrl = tool.logo
-                  ? getPublicImageUrl("Images", `ToolLogos/${tool.logo}`)
-                  : undefined;
+            {displayTools.map((tool, index) => {
+              const logoUrl = tool.logo
+                ? getPublicImageUrl("Images", `ToolLogos/${tool.logo}`)
+                : undefined;
 
-                return (
-                  <div key={`${tool.id}-${index}`} className="flex flex-col">
-                    <ToolCard
-                      tool={{
-                        tool_name: tool.tool_name,
-                        slug: tool.slug,
-                        one_line_description: tool.one_line_description,
-                        pricing_model: [
-                          "Free",
-                          "Freemium",
-                          "Paid",
-                          "Free Trial",
-                        ].includes(tool.pricing_model)
-                          ? (tool.pricing_model as
-                              | "Free"
-                              | "Freemium"
-                              | "Paid"
-                              | "Free Trial")
-                          : undefined,
-                        url: tool.url,
-                        logo: logoUrl,
-                        category: tool.category ?? "Other",
-                      }}
-                    />
-                  </div>
-                );
-              })}
+              return (
+                <div key={`${tool.id}-${index}`} className="flex flex-col">
+                  <ToolCard
+                    tool={{
+                      tool_name: tool.tool_name,
+                      slug: tool.slug,
+                      one_line_description: tool.one_line_description,
+                      pricing_model: [
+                        "Free",
+                        "Freemium",
+                        "Paid",
+                        "Free Trial",
+                      ].includes(tool.pricing_model)
+                        ? (tool.pricing_model as
+                            | "Free"
+                            | "Freemium"
+                            | "Paid"
+                            | "Free Trial")
+                        : undefined,
+                      url: tool.url,
+                      logo: logoUrl,
+                      category: tool.category ?? "Other",
+                    }}
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
 
         {/* Pagination */}
-        {isMounted && totalPages > 1 && (
+        {totalPages > 1 && (
           <Pagination
             totalItems={totalItems}
             pageSize={9}

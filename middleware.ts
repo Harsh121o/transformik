@@ -8,10 +8,5 @@ export function middleware(request: Request) {
     return NextResponse.redirect(url.origin);
   }
 
-  const response = NextResponse.next();
-  response.headers.set(
-    "Cache-Control",
-    "no-store, no-cache, must-revalidate, proxy-revalidate"
-  );
-  return response;
+  return NextResponse.next();
 }

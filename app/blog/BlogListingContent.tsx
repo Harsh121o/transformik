@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { HomeBlogCard } from "@/components/blog/HomeBlogCard";
 import { FAQSchema } from "@/components/schema/FAQSchema";
@@ -53,13 +53,8 @@ export function BlogListingContent({
   const router = useRouter();
   const [sortOption, setSortOption] = useState(initialSortOption);
   const [currentPage, setCurrentPage] = useState(initialPage);
-  const [isMounted, setIsMounted] = useState(false);
 
   const pageSize = 8; // Blogs per page
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
 
   // Update URL when filters change
   const updateURL = (newFilters: { sort?: string; page?: number }) => {
@@ -145,19 +140,17 @@ export function BlogListingContent({
 
         {/* Blogs Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {isMounted && displayBlogs.length > 0 ? (
+          {displayBlogs.length > 0 ? (
             displayBlogs.map((blog) => (
               <HomeBlogCard key={blog.id} blog={blog} />
             ))
-          ) : isMounted ? (
-            <p className="text-gray-500">No blogs found.</p>
           ) : (
-            <p className="text-gray-500">Loading...</p>
+            <p className="text-gray-500">No blogs found.</p>
           )}
         </div>
 
         {/* Pagination */}
-        {isMounted && totalPages > 1 && (
+        {totalPages > 1 && (
           <Pagination
             totalItems={serverTotalBlogs}
             pageSize={pageSize}

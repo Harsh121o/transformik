@@ -256,7 +256,7 @@ export function ToolsContent({
           className="grid grid-cols-1 md:grid-cols-3 gap-6"
           suppressHydrationWarning
         >
-          {isMounted && displayTools.length ? (
+          {displayTools.length ? (
             displayTools.map((tool, index) => (
               <ToolCard
                 key={`${tool.id}-${tool.slug}-${index}`}
@@ -280,25 +280,20 @@ export function ToolsContent({
                   category: tool.category || "Other",
                   logo: getPublicImageUrl(
                     "Images",
-                    tool.logo ? `ToolLogos/${tool.logo}` : undefined
+                    tool.logo ? `ToolLogos/${tool.logo}` : undefined,
                   ),
                 }}
               />
             ))
-          ) : isMounted ? (
+          ) : (
             <p className="text-gray-500">
               No tools found matching your filters.
             </p>
-          ) : (
-            // Show loading state during hydration
-            <div className="col-span-full text-center">
-              <p className="text-gray-500">Loading tools...</p>
-            </div>
           )}
         </div>
 
         {/* Pagination */}
-        {isMounted && totalPages > 1 && (
+        {totalPages > 1 && (
           <Pagination
             totalItems={totalItems}
             pageSize={pageSize}
