@@ -1,6 +1,6 @@
 import { ToolCard } from "@/components/tools/ToolCard";
 import { getPublicImageUrl } from "@/utils/getPublicImageUrl";
-import { supabaseServer } from "@/utils/supabaseServer";
+import { SupabaseCache } from "@/utils/supabaseOptimized";
 
 interface FeaturedToolsProps {
   limit?: number;
@@ -26,15 +26,9 @@ export async function FeaturedTools({
   let tools = initialTools;
 
   if (!tools || tools.length === 0) {
-    const { data, error } = await supabaseServer
-      .from("tools_summary")
-      .select(
-        "id, tool_name, slug, one_line_description, pricing_model, url, logo, category",
-      )
-      .order("created_at", { ascending: false })
-      .limit(limit);
+    const data = await SupabaseCache.getLatestTools(limit);
 
-    if (error || !data?.length) {
+    if (!data?.length) {
       return <p className="text-gray-500">No featured tools available.</p>;
     }
 

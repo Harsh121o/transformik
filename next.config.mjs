@@ -2,6 +2,12 @@
 const nextConfig = {
   reactStrictMode: true,
 
+  // Disable turbopack due to monorepo detection issues
+  experimental: {
+    turbo: false,
+    optimizePackageImports: ["@/components", "@/utils", "lucide-react"],
+  },
+
   // Optimize images
   images: {
     remotePatterns: [
@@ -35,14 +41,18 @@ const nextConfig = {
   // Optimize production builds
   swcMinify: true,
 
-  // Experimental features for better performance
-  experimental: {
-    optimizePackageImports: ["@/components", "@/utils", "lucide-react"],
-  },
-
-  // Remove the invalid Vercel-injected header from robots.txt
+  // Cache-Control headers for edge caching (reduces Supabase egress)
   async headers() {
     return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, s-maxage=43200, stale-while-revalidate=86400",
+          },
+        ],
+      },
       {
         source: "/robots.txt",
         headers: [

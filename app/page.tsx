@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   },
 };
 
-export const revalidate = 1800; // Regenerate every 30 minutes (ISR)
+export const revalidate = 43200; // Regenerate every 12 hours (ISR)
 
 // ---------- Types ----------
 type PricingModel = "Free" | "Freemium" | "Paid" | "Free Trial";

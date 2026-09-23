@@ -4,7 +4,7 @@ import { SupabaseCache } from "@/utils/supabaseOptimized";
 import { ToolsContent } from "@/app/tools/ToolsContent";
 import type { Metadata } from "next";
 
-export const revalidate = 3600; // Cache for 1 hour instead of always fresh
+export const revalidate = 43200; // Cache for 12 hours
 
 // Helper function to get the actual category name from slug
 async function getCategoryNameFromSlug(slug: string): Promise<string> {

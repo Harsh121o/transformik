@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/utils/supabase";
 import { BlogCardVertical } from "./BlogCardVertical";
 
 interface RelatedBlog {
@@ -36,17 +35,21 @@ export function RelatedBlogsHorizontal({
     if (initialBlogs) return;
     const fetchRelatedBlogs = async () => {
       try {
-        // 📊 Selective field query for performance
-        const { data: allBlogs, error: allError } = await supabase
-          .from("blogs_summary")
-          .select("id, title, slug, excerpt, featured_image")
-          .neq("id", currentBlogId)
-          .limit(limit);
-        let finalBlogs: RelatedBlog[] = [];
-        if (!allError && allBlogs && allBlogs.length > 0) {
-          const transformedBlogs: RelatedBlog[] = allBlogs
-            .slice(0, limit)
-            .map((blog) => ({
+        const res = await fetch(
+          `/api/related-blogs?currentBlogId=${encodeURIComponent(
+            currentBlogId
+          )}&limit=${limit}`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const blogs: RelatedBlog[] = (data.blogs || []).map(
+            (blog: {
+              id: string;
+              title: string;
+              slug: string;
+              excerpt?: string;
+              featured_image?: string;
+            }) => ({
               id: blog.id,
               title: blog.title,
               slug: blog.slug,
@@ -54,32 +57,10 @@ export function RelatedBlogsHorizontal({
                 blog.excerpt ||
                 "Discover insights about AI tools and technology.",
               featured_image: blog.featured_image,
-            }));
-          finalBlogs = transformedBlogs;
-        } else {
-          const { data: emergencyBlogs } = await supabase
-            .from("blogs_summary")
-            .select("id, title, slug, excerpt, featured_image")
-            .limit(limit);
-          if (emergencyBlogs && emergencyBlogs.length > 0) {
-            const filteredBlogs = emergencyBlogs.filter(
-              (blog) => blog.id !== currentBlogId,
-            );
-            const transformedBlogs: RelatedBlog[] = filteredBlogs.map(
-              (blog) => ({
-                id: blog.id,
-                title: blog.title,
-                slug: blog.slug,
-                excerpt:
-                  blog.excerpt ||
-                  "Discover insights about AI tools and technology.",
-                featured_image: blog.featured_image,
-              }),
-            );
-            finalBlogs = transformedBlogs;
-          }
+            })
+          );
+          setRelatedBlogs(blogs);
         }
-        setRelatedBlogs(finalBlogs);
       } catch {
         setRelatedBlogs([]);
       } finally {

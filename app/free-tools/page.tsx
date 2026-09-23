@@ -45,7 +45,7 @@ export async function generateMetadata({
   };
 }
 
-export const revalidate = 3600; // Revalidate every hour
+export const revalidate = 43200; // Revalidate every 12 hours
 
 interface CategoryOption {
   value: string;

@@ -1,4 +1,3 @@
-import { supabaseServer } from "@/utils/supabaseServer";
 import { SupabaseCache } from "@/utils/supabaseOptimized";
 import { getPublicImageUrl } from "@/utils/getPublicImageUrl";
 import { notFound } from "next/navigation";
@@ -44,31 +43,14 @@ export async function generateStaticParams() {
   try {
     console.log("Generating static params for top 500 tools...");
 
-    // Fetch only top 500 tools to optimize build time
-    // ⚡ Ordered by created_at DESC to prioritize newest/most popular tools
-    const { data, error } = await supabaseServer
-      .from("tools_summary")
-      .select("slug")
-      .not("slug", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(500);
+    const tools = await SupabaseCache.getLatestTools(500);
 
-    if (error) {
-      console.error("Error fetching top 500 tools:", error);
-      return [];
-    }
-
-    // Filter out any tools with invalid slugs
-    const validTools = (data || []).filter(
-      (tool) => tool.slug && tool.slug.trim(),
+    const validTools = (tools || []).filter(
+      (tool: { slug?: string }) => tool.slug && tool.slug.trim()
     );
 
     console.log(`✓ Generated static params for ${validTools.length} tools`);
-    console.log(
-      "ℹ️  Remaining tools will be generated on-demand with dynamicParams",
-    );
-
-    return validTools.map((tool) => ({
+    return validTools.map((tool: { slug?: string }) => ({
       slug: tool.slug,
     }));
   } catch (err) {
@@ -83,11 +65,7 @@ export async function generateMetadata({
 }: ToolDetailPageProps): Promise<Metadata> {
   const { slug } = await params;
 
-  const { data: toolSummary } = await supabaseServer
-    .from("tools_summary")
-    .select("tool_name, one_line_description")
-    .eq("slug", slug)
-    .single();
+  const toolSummary = await SupabaseCache.getToolSummaryBySlug(slug);
 
   if (!toolSummary) {
     return {
@@ -118,39 +96,17 @@ export async function generateMetadata({
 export default async function ToolDetailPage({ params }: ToolDetailPageProps) {
   const { slug } = await params;
 
-  // ⚡ 1️⃣ Fetch main tool summary first (selective fields for performance)
-  const { data: toolSummary, error: summaryError } = await supabaseServer
-    .from("tools_summary")
-    .select(
-      "id, tool_name, slug, one_line_description, pricing_model, url, logo, category, created_at",
-    )
-    .eq("slug", slug)
-    .single();
+  // ⚡ 1️⃣ Fetch main tool summary first
+  const toolSummary = await SupabaseCache.getToolSummaryBySlug(slug);
 
-  if (summaryError || !toolSummary) return notFound();
+  if (!toolSummary) return notFound();
 
-  // ⚡ 2️⃣ Fetch tool details AND featured tools in parallel (66% faster!)
-  const [toolDetailsResult, featuredToolsResult, topCategories] =
-    await Promise.all([
-      supabaseServer
-        .from("tools_details")
-        .select("*")
-        .eq("id", toolSummary.id)
-        .single(),
-      supabaseServer
-        .from("tools_summary")
-        .select(
-          "id, tool_name, slug, one_line_description, pricing_model, url, logo, category",
-        )
-        .neq("id", toolSummary.id)
-        .limit(5),
-      SupabaseCache.getTopCategories(6), // 💾 Cached for 6 hours
-    ]);
-
-  const { data: toolDetails, error: detailsError } = toolDetailsResult;
-  const { data: featuredTools } = featuredToolsResult;
-
-  if (detailsError) console.error(detailsError);
+  // ⚡ 2️⃣ Fetch tool details AND featured tools in parallel
+  const [toolDetails, featuredTools, topCategories] = await Promise.all([
+    SupabaseCache.getToolDetailsById(toolSummary.id),
+    SupabaseCache.getLatestTools(5),
+    SupabaseCache.getTopCategories(6),
+  ]);
 
   const logoUrl = getPublicImageUrl(
     "Images",

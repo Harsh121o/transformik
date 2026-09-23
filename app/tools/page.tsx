@@ -44,7 +44,7 @@ export async function generateMetadata({
   };
 }
 
-export const revalidate = 3600; // Regenerate every hour (ISR)
+export const revalidate = 43200; // Regenerate every 12 hours (ISR)
 
 // SEO-optimized FAQs for All AI Tools page
 const allToolsFaqs = [

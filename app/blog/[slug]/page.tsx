@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { supabase } from "@/utils/supabase";
+import { SupabaseCache } from "@/utils/supabaseOptimized";
 import { getPublicImageUrl } from "@/utils/getPublicImageUrl";
 import { Button } from "@/components/ui/button";
 import { RelatedBlogsHorizontal } from "@/components/blog/RelatedBlogsHorizontal";
@@ -24,27 +24,17 @@ export async function generateStaticParams() {
   try {
     console.log("Generating static params for blog posts...");
 
-    // Fetch all blog slugs (blogs are typically fewer than tools)
-    const { data, error } = await supabase
-      .from("blogs_summary")
-      .select("slug")
-      .not("slug", "is", null)
-      .order("created_at", { ascending: false });
+    const blogs = await SupabaseCache.getAllBlogs();
 
-    if (error) {
-      console.error("Error fetching blog slugs:", error);
-      return [];
-    }
-
-    const validBlogs = (data || []).filter(
-      (blog) => blog.slug && blog.slug.trim(),
+    const validBlogs = (blogs || []).filter(
+      (blog: { slug?: string }) => blog.slug && blog.slug.trim()
     );
 
     console.log(
-      `✓ Generated static params for ${validBlogs.length} blog posts`,
+      `✓ Generated static params for ${validBlogs.length} blog posts`
     );
 
-    return validBlogs.map((blog) => ({
+    return validBlogs.map((blog: { slug?: string }) => ({
       slug: blog.slug,
     }));
   } catch (err) {
@@ -59,11 +49,7 @@ export async function generateMetadata({
 }: BlogDetailPageProps): Promise<Metadata> {
   const { slug } = await params;
 
-  const { data: blogSummary } = await supabase
-    .from("blogs_summary")
-    .select("*")
-    .eq("slug", slug)
-    .single();
+  const blogSummary = await SupabaseCache.getBlogSummaryBySlug(slug);
 
   if (!blogSummary) {
     return {
@@ -108,42 +94,37 @@ export async function generateMetadata({
 export default async function BlogDetailPage({ params }: BlogDetailPageProps) {
   const { slug } = await params;
 
-  // Fetch blog summary (using * to support fallback fields like image, cover_image, description, summary)
-  const { data: summary, error: summaryError } = await supabase
-    .from("blogs_summary")
-    .select("*")
-    .eq("slug", slug)
-    .single();
+  // Fetch blog summary
+  const summary = await SupabaseCache.getBlogSummaryBySlug(slug);
 
-  if (summaryError || !summary) return notFound();
+  if (!summary) return notFound();
 
   // Fetch blog details
-  const { data: details, error: detailsError } = await supabase
-    .from("blogs_details")
-    .select("content")
-    .eq("id", summary.id)
-    .single();
+  const details = await SupabaseCache.getBlogDetailsById(summary.id);
 
-  if (detailsError || !details) return notFound();
-
-  // Note: Featured tools removed from blog page; data fetch skipped to avoid unused-vars.
+  if (!details) return notFound();
 
   // Fetch related blogs (SSR)
-  const { data: relatedBlogsData } = await supabase
-    .from("blogs_summary")
-    .select("id, title, slug, excerpt, featured_image")
-    .neq("id", summary.id)
-    .limit(3);
+  const relatedBlogsData = await SupabaseCache.getRelatedBlogs(summary.id, 3);
   const relatedBlogs =
     relatedBlogsData && relatedBlogsData.length > 0
-      ? relatedBlogsData.map((blog) => ({
-          id: blog.id,
-          title: blog.title,
-          slug: blog.slug,
-          excerpt:
-            blog.excerpt || "Discover insights about AI tools and technology.",
-          featured_image: blog.featured_image,
-        }))
+      ? relatedBlogsData.map(
+          (blog: {
+            id: string | number;
+            title: string;
+            slug: string;
+            excerpt?: string;
+            featured_image?: string;
+          }) => ({
+            id: String(blog.id),
+            title: blog.title,
+            slug: blog.slug,
+            excerpt:
+              blog.excerpt ||
+              "Discover insights about AI tools and technology.",
+            featured_image: blog.featured_image,
+          })
+        )
       : [];
 
   // safe fallbacks for image/excerpt fields (DB column names may vary)

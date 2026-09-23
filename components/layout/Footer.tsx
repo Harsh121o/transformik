@@ -5,7 +5,6 @@ import { FaYoutube, FaInstagram, FaLinkedin } from "react-icons/fa6";
 import Link from "next/link";
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { supabase } from "@/utils/supabase";
 
 function generateSlug(category: string) {
   return category
@@ -20,26 +19,10 @@ export function Footer() {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const { data, error } = await supabase
-          .from("tools_summary")
-          .select("category");
-        if (error) {
-          console.error("Error fetching categories:", error);
-          return;
-        }
-        if (data) {
-          const allCategories: string[] = [];
-          data.forEach((tool) => {
-            const cat = tool.category;
-            if (Array.isArray(cat)) {
-              cat.forEach((c) => c && allCategories.push(String(c).trim()));
-            } else if (typeof cat === "string" && cat.trim()) {
-              allCategories.push(cat.trim());
-            }
-          });
-          const unique = Array.from(new Set(allCategories));
-          // keep up to 15 categories for the footer
-          setCategories(unique.slice(0, 15));
+        const res = await fetch("/api/footer-categories");
+        if (res.ok) {
+          const data = await res.json();
+          setCategories(data.categories || []);
         }
       } catch (err) {
         console.error("Unexpected error fetching categories:", err);

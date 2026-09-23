@@ -2,7 +2,7 @@ import { MetadataRoute } from "next";
 import { SupabaseCache } from "@/utils/supabaseOptimized";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 3600; // Cache sitemap for 1 hour
+export const revalidate = 86400; // Cache sitemap for 24 hours
 
 interface SitemapData {
   categories: string[];

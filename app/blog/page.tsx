@@ -45,7 +45,7 @@ export async function generateMetadata({
   };
 }
 
-export const revalidate = 1800; // Regenerate every 30 minutes (ISR)
+export const revalidate = 43200; // Regenerate every 12 hours (ISR)
 
 async function getBlogs(page: number = 1, sortOption: string = "date-desc") {
   try {

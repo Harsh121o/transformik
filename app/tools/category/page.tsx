@@ -1,4 +1,4 @@
-import { supabaseServer } from "@/utils/supabaseServer";
+import { SupabaseCache } from "@/utils/supabaseOptimized";
 import { CategoriesContent } from "./CategoriesContent";
 import {
   Accordion,
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
   },
 };
 
-export const revalidate = 3600; // Cache for 1 hour
+export const revalidate = 43200; // Cache for 12 hours
 
 interface Category {
   name: string;
@@ -78,81 +78,9 @@ const faqs = [
 
 async function getCategories(): Promise<Category[]> {
   try {
-    let allTools: { category?: string | string[] | null }[] = [];
-    let from = 0;
-    const batchSize = 1000;
-    let hasMore = true;
-
-    // Fetch all tools in batches to ensure we get complete data
-    while (hasMore) {
-      const { data, error } = await supabaseServer
-        .from("tools_summary")
-        .select("category")
-        .range(from, from + batchSize - 1);
-
-      if (error) {
-        console.error("Error fetching categories:", error);
-        throw error;
-      }
-
-      if (data && data.length > 0) {
-        allTools = [...allTools, ...data];
-        from += batchSize;
-        hasMore = data.length === batchSize;
-      } else {
-        hasMore = false;
-      }
-    }
-
-    // Count tools per category
-    const categoryCount: Record<string, number> = {};
-
-    allTools.forEach((tool) => {
-      const categories = tool.category;
-
-      if (Array.isArray(categories)) {
-        categories.forEach((cat) => {
-          if (cat && typeof cat === "string") {
-            categoryCount[cat] = (categoryCount[cat] || 0) + 1;
-          }
-        });
-      } else if (typeof categories === "string" && categories) {
-        categoryCount[categories] = (categoryCount[categories] || 0) + 1;
-      } else {
-        categoryCount["Uncategorized"] =
-          (categoryCount["Uncategorized"] || 0) + 1;
-      }
-    });
-
-    // Use Map to ensure unique slugs and merge duplicate slugs
-    const categoryMap = new Map<string, Category>();
-
-    Object.entries(categoryCount).forEach(([name, count]) => {
-      const slug = name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/(^-|-$)/g, "");
-
-      const existing = categoryMap.get(slug);
-      if (existing) {
-        // Merge counts for duplicate slugs, keep the longer name
-        existing.count += count;
-        if (name.length > existing.name.length) {
-          existing.name = name;
-        }
-      } else {
-        categoryMap.set(slug, { name, count, slug });
-      }
-    });
-
-    const categoryArray: Category[] = Array.from(categoryMap.values()).filter(
-      (category) => category.name !== "Uncategorized"
-    );
-
-    // console.log(`Processed ${categoryArray.length} categories from ${allTools.length} tools`);
-    return categoryArray;
+    return await SupabaseCache.getAllCategoryCounts();
   } catch (err) {
-    console.error("Error processing categories:", err);
+    console.error("Error fetching categories:", err);
     return [];
   }
 }

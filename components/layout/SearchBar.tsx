@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { FiSearch } from "react-icons/fi";
 import Link from "next/link";
-import { supabase } from "@/utils/supabase";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -46,20 +45,12 @@ export function SearchBar() {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const { data: toolData } = await supabase
-          .from("tools_summary")
-          .select("id, tool_name, slug, one_line_description")
-          .ilike("tool_name", `%${query}%`)
-          .limit(3); // Reduced from 5 to 3
-
-        const { data: blogData } = await supabase
-          .from("blogs_summary")
-          .select("id, title, slug, excerpt")
-          .ilike("title", `%${query}%`)
-          .limit(3); // Reduced from 5 to 3
-
-        setTools(toolData || []);
-        setBlogs(blogData || []);
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setTools(data.tools || []);
+          setBlogs(data.blogs || []);
+        }
       } catch (err) {
         console.error("Error fetching search results:", err);
       } finally {
@@ -67,7 +58,7 @@ export function SearchBar() {
       }
     };
 
-    const debounce = setTimeout(fetchData, 500); // Increased from 300ms to 500ms
+    const debounce = setTimeout(fetchData, 500);
     return () => clearTimeout(debounce);
   }, [query]);
 
