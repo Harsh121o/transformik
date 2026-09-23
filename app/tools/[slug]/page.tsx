@@ -1,4 +1,4 @@
-import { SupabaseCache } from "@/utils/supabaseOptimized";
+import { SupabaseCache, parseArray, ensureString } from "@/utils/supabaseOptimized";
 import { getPublicImageUrl } from "@/utils/getPublicImageUrl";
 import { notFound } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -113,13 +113,13 @@ export default async function ToolDetailPage({ params }: ToolDetailPageProps) {
     toolSummary.logo ? `ToolLogos/${toolSummary.logo}` : undefined,
   );
 
-  const screenshots = (toolDetails?.screenshots ?? [])
+  const screenshots = parseArray(toolDetails?.screenshots)
     .map((fileName: string) =>
       getPublicImageUrl("Images", `ToolScreenshot/${fileName}`),
     )
     .filter(Boolean) as string[];
 
-  const faqs = toolDetails?.faqs ?? [];
+  const faqs = parseArray(toolDetails?.faqs);
 
   // Reusable section component for Description and Screenshots
   const ToolSection = ({
@@ -295,7 +295,7 @@ export default async function ToolDetailPage({ params }: ToolDetailPageProps) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3 text-gray-700 leading-relaxed">
-                  {toolDetails.how_to_use
+                  {ensureString(toolDetails.how_to_use)!
                     .split("\n")
                     .filter((step: string) => step.trim())
                     .map((step: string, idx: number) => {
@@ -328,7 +328,7 @@ export default async function ToolDetailPage({ params }: ToolDetailPageProps) {
                 </CardHeader>
                 <CardContent className="pt-4">
                   <div className="flex flex-wrap gap-2">
-                    {toolDetails.use_cases
+                    {ensureString(toolDetails.use_cases)!
                       .split("\n")
                       .filter((uc: string) => uc.trim())
                       .map((uc: string, idx: number) => {
@@ -365,7 +365,7 @@ export default async function ToolDetailPage({ params }: ToolDetailPageProps) {
                         <CheckCircle className="w-5 h-5" /> Pros
                       </h3>
                       <ul className="list-disc ml-6 mt-2 text-gray-700 space-y-1">
-                        {toolDetails.pros
+                        {ensureString(toolDetails.pros)!
                           .split("\n")
                           .filter((p: string) => p.trim())
                           .map((p: string, idx: number) => {
@@ -386,7 +386,7 @@ export default async function ToolDetailPage({ params }: ToolDetailPageProps) {
                         <XCircle className="w-5 h-5" /> Cons
                       </h3>
                       <ul className="list-disc ml-6 mt-2 text-gray-700 space-y-1">
-                        {toolDetails.cons
+                        {ensureString(toolDetails.cons)!
                           .split("\n")
                           .filter((c: string) => c.trim())
                           .map((c: string, idx: number) => {
@@ -436,7 +436,7 @@ export default async function ToolDetailPage({ params }: ToolDetailPageProps) {
                     ) : (
                       // 📝 Case 2: Normal pricing text
                       <div className="space-y-3">
-                        {toolDetails.pricing
+                        {ensureString(toolDetails.pricing)!
                           .split(
                             /\.\s+(?=[A-Z])|(?:\n|\.)\s*(?=Free Plan:|Development Plan|Production Plan|Basic Plan:|Pro Plan:|Enterprise Plan|Premium Plan:|Starter Plan:|Business Plan:|Team Plan:|Individual Plan:|Monthly Plan:|Annual Plan:|Trial:|Refund Policy:)/g,
                           )

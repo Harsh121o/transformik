@@ -3,6 +3,65 @@ import { supabaseServer } from "./supabaseServer";
 import { cache } from "@/lib/cache";
 import { isNeonProvider, getNeonSql } from "./db";
 
+export function parseArray(val: any): any[] {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        // fallback
+      }
+    }
+    if (trimmed.includes(",")) {
+      return trimmed.split(",").map((s) => s.trim()).filter(Boolean);
+    }
+    return [trimmed];
+  }
+  return [];
+}
+
+export function ensureString(val: any): string | null {
+  if (val === null || val === undefined) return null;
+  if (typeof val === "string") return val;
+  if (Array.isArray(val)) return val.join("\n");
+  if (typeof val === "object") {
+    try {
+      return JSON.stringify(val);
+    } catch {
+      return String(val);
+    }
+  }
+  return String(val);
+}
+
+export function normalizeToolSummary(item: any): any {
+  if (!item) return null;
+  return {
+    ...item,
+    category: parseArray(item.category),
+  };
+}
+
+export function normalizeToolDetails(item: any): any {
+  if (!item) return null;
+  return {
+    ...item,
+    screenshots: parseArray(item.screenshots),
+    faqs: parseArray(item.faqs),
+    use_cases: ensureString(item.use_cases),
+    pros: ensureString(item.pros),
+    cons: ensureString(item.cons),
+    pricing: ensureString(item.pricing),
+    how_to_use: ensureString(item.how_to_use),
+    description: ensureString(item.description),
+  };
+}
+
 export class SupabaseCache {
   // Get all tools with caching
   static async getAllTools(): Promise<any[]> {
@@ -15,41 +74,39 @@ export class SupabaseCache {
     }
 
     try {
+      let rawTools: any[] = [];
       if (isNeonProvider()) {
         const sql = getNeonSql();
-        const rows = (await sql`
+        rawTools = (await sql`
           SELECT * FROM tools_summary ORDER BY tool_name ASC
         `) as any[];
-        cache.set(cacheKey, rows || [], 1440);
-        console.log(`✓ Cached ${rows?.length || 0} tools (Neon)`);
-        return rows || [];
-      }
+      } else {
+        let from = 0;
+        const batchSize = 1000;
+        let hasMore = true;
 
-      let allTools: any[] = [];
-      let from = 0;
-      const batchSize = 1000;
-      let hasMore = true;
+        while (hasMore) {
+          const { data, error } = await supabaseServer
+            .from("tools_summary")
+            .select("*")
+            .order("tool_name", { ascending: true })
+            .range(from, from + batchSize - 1);
 
-      while (hasMore) {
-        const { data, error } = await supabaseServer
-          .from("tools_summary")
-          .select("*")
-          .order("tool_name", { ascending: true })
-          .range(from, from + batchSize - 1);
+          if (error) throw error;
 
-        if (error) throw error;
-
-        if (data && data.length > 0) {
-          allTools = [...allTools, ...data];
-          from += batchSize;
-          hasMore = data.length === batchSize;
-        } else {
-          hasMore = false;
+          if (data && data.length > 0) {
+            rawTools = [...rawTools, ...data];
+            from += batchSize;
+            hasMore = data.length === batchSize;
+          } else {
+            hasMore = false;
+          }
         }
       }
 
+      const allTools = (rawTools || []).map(normalizeToolSummary);
       cache.set(cacheKey, allTools, 1440);
-      console.log(`✓ Cached ${allTools.length} tools (Supabase)`);
+      console.log(`✓ Cached ${allTools.length} tools`);
       return allTools;
     } catch (error) {
       console.error("Error fetching tools:", error);
@@ -105,32 +162,32 @@ export class SupabaseCache {
     }
 
     try {
+      let rawTools: any[] = [];
       if (isNeonProvider()) {
         const sql = getNeonSql();
-        const rows = (await sql`
+        rawTools = (await sql`
           SELECT id, tool_name, slug, one_line_description, pricing_model, url, logo, category
           FROM tools_summary
           ORDER BY created_at DESC
           LIMIT ${limit}
         `) as any[];
-        cache.set(cacheKey, rows || [], 720);
-        console.log(`✓ Cached ${rows?.length || 0} latest tools (Neon)`);
-        return rows || [];
+      } else {
+        const { data, error } = await supabaseServer
+          .from("tools_summary")
+          .select(
+            "id, tool_name, slug, one_line_description, pricing_model, url, logo, category"
+          )
+          .order("created_at", { ascending: false })
+          .limit(limit);
+
+        if (error) throw error;
+        rawTools = data || [];
       }
 
-      const { data, error } = await supabaseServer
-        .from("tools_summary")
-        .select(
-          "id, tool_name, slug, one_line_description, pricing_model, url, logo, category"
-        )
-        .order("created_at", { ascending: false })
-        .limit(limit);
-
-      if (error) throw error;
-
-      cache.set(cacheKey, data || [], 720);
-      console.log(`✓ Cached ${data?.length || 0} latest tools (Supabase)`);
-      return data || [];
+      const tools = rawTools.map(normalizeToolSummary);
+      cache.set(cacheKey, tools, 720);
+      console.log(`✓ Cached ${tools.length} latest tools`);
+      return tools;
     } catch (error) {
       console.error("Error fetching latest tools:", error);
       return [];
@@ -201,13 +258,8 @@ export class SupabaseCache {
 
         const allCategories: string[] = [];
         (categoriesData || []).forEach((item: any) => {
-          if (item.category) {
-            if (Array.isArray(item.category)) {
-              allCategories.push(...item.category);
-            } else if (typeof item.category === "string") {
-              allCategories.push(item.category);
-            }
-          }
+          const catList = parseArray(item.category);
+          allCategories.push(...catList);
         });
 
         const uniqueCategories = Array.from(new Set(allCategories))
@@ -258,13 +310,8 @@ export class SupabaseCache {
 
       const allCategories: string[] = [];
       allCategoriesData.forEach((item) => {
-        if (item.category) {
-          if (Array.isArray(item.category)) {
-            allCategories.push(...item.category);
-          } else if (typeof item.category === "string") {
-            allCategories.push(item.category);
-          }
-        }
+        const catList = parseArray(item.category);
+        allCategories.push(...catList);
       });
 
       const uniqueCategories = Array.from(new Set(allCategories))
@@ -353,8 +400,9 @@ export class SupabaseCache {
         `) as any[];
 
         const totalCount = rows && rows.length > 0 ? Number(rows[0].total_count) : 0;
+        const normalizedTools = (rows || []).map(normalizeToolSummary);
         const uniqueTools = Array.from(
-          new Map((rows || []).map((tool: any) => [tool.id, tool])).values()
+          new Map(normalizedTools.map((tool: any) => [tool.id, tool])).values()
         );
 
         return {
@@ -389,9 +437,10 @@ export class SupabaseCache {
       const { data, error, count } = await query;
       if (error) throw error;
 
-      const uniqueTools = data
-        ? Array.from(new Map(data.map((tool) => [tool.id, tool])).values())
-        : [];
+      const normalizedTools = (data || []).map(normalizeToolSummary);
+      const uniqueTools = Array.from(
+        new Map(normalizedTools.map((tool: any) => [tool.id, tool])).values()
+      );
 
       return {
         tools: uniqueTools,
@@ -438,9 +487,10 @@ export class SupabaseCache {
         `) as any[];
 
         const totalCount = rows && rows.length > 0 ? Number(rows[0].total_count) : 0;
+        const normalizedTools = (rows || []).map(normalizeToolSummary);
 
         return {
-          tools: rows || [],
+          tools: normalizedTools,
           total: totalCount,
           page,
           pageSize,
@@ -457,8 +507,10 @@ export class SupabaseCache {
 
       if (error) throw error;
 
+      const normalizedTools = (data || []).map(normalizeToolSummary);
+
       return {
-        tools: data || [],
+        tools: normalizedTools,
         total: count || 0,
         page,
         pageSize,
@@ -520,13 +572,8 @@ export class SupabaseCache {
 
       const allCategories: string[] = [];
       allCategoriesData.forEach((item) => {
-        if (item.category) {
-          if (Array.isArray(item.category)) {
-            allCategories.push(...item.category.filter(Boolean));
-          } else if (typeof item.category === "string") {
-            allCategories.push(item.category);
-          }
-        }
+        const catList = parseArray(item.category);
+        allCategories.push(...catList);
       });
 
       const uniqueCategories = Array.from(new Set(allCategories))
@@ -587,8 +634,9 @@ export class SupabaseCache {
             `) as any[];
 
         const totalCount = rows && rows.length > 0 ? Number(rows[0].total_count) : 0;
+        const normalizedTools = (rows || []).map(normalizeToolSummary);
         const uniqueTools = Array.from(
-          new Map((rows || []).map((tool: any) => [tool.id, tool])).values()
+          new Map(normalizedTools.map((tool: any) => [tool.id, tool])).values()
         );
 
         return {
@@ -627,9 +675,10 @@ export class SupabaseCache {
       const { data, error, count } = await query;
       if (error) throw error;
 
-      const uniqueTools = data
-        ? Array.from(new Map(data.map((tool) => [tool.id, tool])).values())
-        : [];
+      const normalizedTools = (data || []).map(normalizeToolSummary);
+      const uniqueTools = Array.from(
+        new Map(normalizedTools.map((tool: any) => [tool.id, tool])).values()
+      );
 
       return {
         tools: uniqueTools,
@@ -677,13 +726,8 @@ export class SupabaseCache {
 
       const allCategories: string[] = [];
       data?.forEach((item) => {
-        if (item.category) {
-          if (Array.isArray(item.category)) {
-            allCategories.push(...item.category.filter(Boolean));
-          } else if (typeof item.category === "string") {
-            allCategories.push(item.category);
-          }
-        }
+        const catList = parseArray(item.category);
+        allCategories.push(...catList);
       });
 
       const uniqueCategories = Array.from(new Set(allCategories))
@@ -726,17 +770,12 @@ export class SupabaseCache {
       const categoryCount: { [key: string]: number } = {};
 
       data?.forEach((item) => {
-        if (item.category) {
-          const categories = Array.isArray(item.category)
-            ? item.category
-            : [item.category];
-
-          categories.forEach((cat: string) => {
-            if (cat && cat.trim()) {
-              categoryCount[cat] = (categoryCount[cat] || 0) + 1;
-            }
-          });
-        }
+        const categories = parseArray(item.category);
+        categories.forEach((cat: string) => {
+          if (cat && cat.trim()) {
+            categoryCount[cat] = (categoryCount[cat] || 0) + 1;
+          }
+        });
       });
 
       const topCategories = Object.entries(categoryCount)
@@ -836,7 +875,7 @@ export class SupabaseCache {
           WHERE slug = ${slug}
           LIMIT 1
         `) as any[];
-        return rows && rows.length > 0 ? rows[0] : null;
+        return rows && rows.length > 0 ? normalizeToolSummary(rows[0]) : null;
       }
 
       const { data, error } = await supabaseServer
@@ -848,7 +887,7 @@ export class SupabaseCache {
         .single();
 
       if (error) return null;
-      return data;
+      return normalizeToolSummary(data);
     } catch (err) {
       console.error("Error fetching tool summary by slug:", err);
       return null;
@@ -863,7 +902,7 @@ export class SupabaseCache {
         const rows = (await sql`
           SELECT * FROM tools_details WHERE id = ${id} LIMIT 1
         `) as any[];
-        return rows && rows.length > 0 ? rows[0] : null;
+        return rows && rows.length > 0 ? normalizeToolDetails(rows[0]) : null;
       }
 
       const { data, error } = await supabaseServer
@@ -873,7 +912,7 @@ export class SupabaseCache {
         .single();
 
       if (error) return null;
-      return data;
+      return normalizeToolDetails(data);
     } catch (err) {
       console.error("Error fetching tool details by ID:", err);
       return null;
@@ -937,11 +976,12 @@ export class SupabaseCache {
     limit = 4
   ): Promise<any[]> {
     try {
+      let rawTools: any[] = [];
       if (isNeonProvider()) {
         const sql = getNeonSql();
         const primaryCategory = categories && categories.length > 0 ? `%${categories[0]}%` : null;
 
-        const rows = (await sql`
+        rawTools = (await sql`
           SELECT id, tool_name, slug, one_line_description, logo, category, pricing_model, url
           FROM tools_summary
           WHERE id::text != ${String(currentToolId)}
@@ -949,20 +989,21 @@ export class SupabaseCache {
           ORDER BY tool_name ASC
           LIMIT ${limit}
         `) as any[];
-        return rows || [];
+      } else {
+        let query = supabaseServer
+          .from("tools_summary")
+          .select("id, tool_name, slug, one_line_description, logo, category, pricing_model, url")
+          .neq("id", currentToolId);
+
+        if (categories && categories.length > 0) {
+          query = query.contains("category", [categories[0]]);
+        }
+
+        const { data } = await query.order("tool_name", { ascending: true }).limit(limit);
+        rawTools = data || [];
       }
 
-      let query = supabaseServer
-        .from("tools_summary")
-        .select("id, tool_name, slug, one_line_description, logo, category, pricing_model, url")
-        .neq("id", currentToolId);
-
-      if (categories && categories.length > 0) {
-        query = query.contains("category", [categories[0]]);
-      }
-
-      const { data } = await query.order("tool_name", { ascending: true }).limit(limit);
-      return data || [];
+      return (rawTools || []).map(normalizeToolSummary);
     } catch (err) {
       console.error("Error fetching related tools:", err);
       return [];
@@ -1051,7 +1092,7 @@ export class SupabaseCache {
   // Helper: Get categories with counts (for /tools/category page)
   static async getAllCategoryCounts(): Promise<any[]> {
     try {
-      let allTools: { category?: string | string[] | null }[] = [];
+      let allTools: { category?: any }[] = [];
 
       if (isNeonProvider()) {
         const sql = getNeonSql();
@@ -1083,18 +1124,13 @@ export class SupabaseCache {
       const categoryCounts: { [key: string]: number } = {};
 
       allTools.forEach((tool) => {
-        const cat = tool.category;
-        if (Array.isArray(cat)) {
-          cat.forEach((c) => {
-            if (c && typeof c === "string" && c.trim()) {
-              const clean = c.trim();
-              categoryCounts[clean] = (categoryCounts[clean] || 0) + 1;
-            }
-          });
-        } else if (typeof cat === "string" && cat.trim()) {
-          const clean = cat.trim();
-          categoryCounts[clean] = (categoryCounts[clean] || 0) + 1;
-        }
+        const catList = parseArray(tool.category);
+        catList.forEach((c) => {
+          if (c && typeof c === "string" && c.trim()) {
+            const clean = c.trim();
+            categoryCounts[clean] = (categoryCounts[clean] || 0) + 1;
+          }
+        });
       });
 
       const categories = Object.entries(categoryCounts).map(
