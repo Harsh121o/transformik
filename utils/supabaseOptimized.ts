@@ -1091,6 +1091,10 @@ export class SupabaseCache {
 
   // Helper: Get categories with counts (for /tools/category page)
   static async getAllCategoryCounts(): Promise<any[]> {
+    const cacheKey = "all_category_counts";
+    const cached = cache.get(cacheKey);
+    if (cached) return cached as any[];
+
     try {
       let allTools: { category?: any }[] = [];
 
@@ -1145,9 +1149,61 @@ export class SupabaseCache {
       );
 
       categories.sort((a, b) => b.count - a.count);
+      if (categories.length > 0) cache.set(cacheKey, categories, 720);
       return categories;
     } catch (err) {
       console.error("Error fetching category counts:", err);
+      return [];
+    }
+  }
+
+  // Category metadata (categories_details) for a slug, provider-aware, never throws
+  static async getCategoryDetails(slug: string): Promise<any | null> {
+    try {
+      if (isNeonProvider()) {
+        const sql = getNeonSql();
+        const rows = (await sql`
+          SELECT name, slug, meta_title, meta_description, description, faqs
+          FROM categories_details WHERE slug = ${slug} LIMIT 1
+        `) as any[];
+        const row = rows?.[0];
+        if (!row) return null;
+        if (typeof row.faqs === "string") {
+          try {
+            row.faqs = JSON.parse(row.faqs);
+          } catch {
+            row.faqs = null;
+          }
+        }
+        return row;
+      }
+
+      const { data } = await supabaseServer
+        .from("categories_details")
+        .select("name, slug, meta_title, meta_description, description, faqs")
+        .eq("slug", slug)
+        .maybeSingle();
+      return data || null;
+    } catch (err) {
+      console.error("Error fetching category details:", err);
+      return null;
+    }
+  }
+
+  // All category slugs from categories_details, provider-aware, never throws
+  static async getAllCategorySlugs(): Promise<string[]> {
+    try {
+      if (isNeonProvider()) {
+        const sql = getNeonSql();
+        const rows = (await sql`SELECT slug FROM categories_details`) as any[];
+        return (rows || []).map((r) => r.slug).filter(Boolean);
+      }
+      const { data } = await supabaseServer
+        .from("categories_details")
+        .select("slug");
+      return (data || []).map((r: any) => r.slug).filter(Boolean);
+    } catch (err) {
+      console.error("Error fetching category slugs:", err);
       return [];
     }
   }
